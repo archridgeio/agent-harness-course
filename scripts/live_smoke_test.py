@@ -68,7 +68,11 @@ def compactions_happened(out: str, repo: Path) -> str | None:
     m = re.search(r"Compactions: (\d+)", out)
     if not m:
         return "no 'Compactions:' line"
-    return None if int(m.group(1)) >= 1 else "ran, but no compaction triggered (raise the task size or lower --budget)"
+    if int(m.group(1)) < 1:
+        return "ran, but no compaction triggered (raise the task size or lower --budget)"
+    pairs = [tuple(map(int, p)) for p in re.findall(r"\((\d+), (\d+)\)", out.split("Compactions:")[-1])]
+    grew = [p for p in pairs if p[1] >= p[0]]
+    return f"compaction made the context bigger: {grew}" if grew else None
 
 
 def cache_hits(out: str, repo: Path) -> str | None:
@@ -118,8 +122,7 @@ CHECKS = [
     Check(9, "permissions (auto mode)", ["ch09-permissions/permissions.py", "--mode", "auto",
                                          "Fix the bug in inventory/stats.py, then run: python -m pytest -q"],
           all_of(contains("Permission log"), english, bug_fixed_and_tests_pass), timeout=420),
-    Check(10, "compaction", ["ch10-compaction/compaction.py", "--budget", "12000",
-                             "Read every file in the repo, then list one risk per module."],
+    Check(10, "compaction", ["ch10-compaction/compaction.py", "--budget", "3000"],
           compactions_happened, timeout=600),
     Check(11, "RAG vs agentic search", ["ch11-retrieval/compare.py"], contains("RAG", "Agentic"), timeout=600),
     Check(12, "memory (session 1)", ["ch12-memory/memory_tool.py", "session1"], contains("discount")),

@@ -6,8 +6,9 @@ Two techniques, both plugged into the loop's before_model hook:
 2. Compaction: once the window passes a threshold (70% of a budget), older
    turns are summarised by the model and replaced with that summary.
 
-Run:  python ch10-compaction/compaction.py --budget 12000 "Review every module and list risks"
-      python ch10-compaction/compaction.py --off "Review every module and list risks"
+Run:  python ch10-compaction/compaction.py --budget 3000             # demo task, compaction on
+      python ch10-compaction/compaction.py --budget 3000 --no-notes  # no note-taking prompt
+      python ch10-compaction/compaction.py --off                     # no clearing or compaction
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ Keep, in this order:
 3. Files read or changed, with the key facts learned from each (function names, line numbers).
 4. Errors seen and how they were handled.
 5. What is still left to do.
-Drop raw tool output, repeated reasoning and pleasantries. Use short bullet points."""
+Drop raw tool output, repeated reasoning and pleasantries. Use short bullet points, 150 words at most."""
 
 
 def _plain(obj):
@@ -41,15 +42,21 @@ def estimate_tokens(messages: list) -> int:
     return len(json.dumps(messages, default=_plain)) // 4
 
 
-def clear_old_tool_results(messages: list, keep_last: int = 3) -> list:
-    """Replace the content of all but the newest `keep_last` tool results."""
-    positions = [(i, j) for i, m in enumerate(messages) if m["role"] == "user" and isinstance(m["content"], list)
-                 for j, block in enumerate(m["content"]) if isinstance(block, dict) and block.get("type") == "tool_result"]
-    to_clear = set(positions[:-keep_last] if keep_last else positions)
+def clear_old_tool_results(messages: list, keep_last: int = 2) -> list:
+    """Clear tool output from all but the newest `keep_last` tool-result TURNS.
+
+    Counting turns, not individual results, matters: a model often reads 8 files in one
+    turn, and those results must reach it intact at least once. The newest turn's results
+    are never cleared, because the model has not seen them yet.
+    """
+    turns = [i for i, m in enumerate(messages) if m["role"] == "user" and isinstance(m["content"], list)
+             and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in m["content"])]
+    to_clear = set(turns[:-max(keep_last, 1)])
     out = []
     for i, m in enumerate(messages):
-        if any(i == p[0] for p in to_clear):
-            content = [dict(b, content=CLEARED) if (i, j) in to_clear else b for j, b in enumerate(m["content"])]
+        if i in to_clear:
+            content = [dict(b, content=CLEARED) if isinstance(b, dict) and b.get("type") == "tool_result" else b
+                       for b in m["content"]]
             out.append({"role": m["role"], "content": content})
         else:
             out.append(m)
@@ -79,10 +86,11 @@ class Compactor:
     """before_model hook: clear old tool results, and summarise when over the threshold."""
 
     def __init__(self, client, budget: int = 20_000, threshold: float = 0.7, keep_recent: int = 4,
-                 keep_tool_results: int = 3, model: str = MODEL):
+                 keep_tool_results: int = 2, model: str = MODEL):
         self.client, self.budget, self.threshold = client, budget, threshold
         self.keep_recent, self.keep_tool_results, self.model = keep_recent, keep_tool_results, model
         self.compactions = 0
+        self.skipped = 0
         self.history: list[tuple[int, int]] = []  # (tokens before, tokens after)
 
     def cut_index(self, messages: list) -> int | None:
@@ -98,19 +106,41 @@ class Compactor:
         if before < self.threshold * self.budget:
             return messages
         cut = self.cut_index(messages)
-        if cut is None:
-            return messages
+        if cut is None or estimate_tokens(messages[:cut]) < 0.3 * before:
+            return messages  # too little old history to be worth summarising
         summary = self.client.messages.create(
-            model=self.model, max_tokens=1500, system=SUMMARY_PROMPT,
+            model=self.model, max_tokens=600, system=SUMMARY_PROMPT,
             messages=[{"role": "user", "content": transcript(messages[:cut])}],
         )
         text = "".join(b.text for b in summary.content if b.type == "text")
         compacted = [{"role": "user", "content": f"<summary_of_earlier_work>\n{text}\n</summary_of_earlier_work>\n"
                                                  "Continue the task from where this summary leaves off."}]
         compacted += messages[cut:]
+        after = estimate_tokens(compacted)
+        if after >= before:
+            self.skipped += 1  # the summary would not save space: keep the original history
+            return messages
         self.compactions += 1
-        self.history.append((before, estimate_tokens(compacted)))
+        self.history.append((before, after))
         return compacted
+
+
+NOTE_TAKING_SYSTEM = """You are a repo assistant. Respond in English.
+Old tool results are cleared from your context to save space, and older turns may be summarised.
+So after each tool result, write one short line with the facts you will need later
+(for example: "stats.py - risk: mean() divides by len - 1"). Never re-read a file you have
+already read: use your notes."""
+
+
+# A long, step-by-step session. The sample repo is tiny, so the demo uses a small --budget to
+# stand in for a large codebase filling a real context window.
+DEMO_TASK = ('Review the repo one module at a time. For each module in inventory/: read the module, then read the tests that cover it, then write a 3-line review before moving to the next module. Finish with a summary table.')
+
+
+def trace_turn(turn, response, messages):
+    calls = [f"{b.name}({', '.join(f'{v}' for v in (b.input or {}).values())})"
+             for b in response.content if b.type == "tool_use"]
+    print(f"  turn {turn:>2}: {', '.join(calls) or 'final answer'}", flush=True)
 
 
 if __name__ == "__main__":
@@ -121,13 +151,15 @@ if __name__ == "__main__":
         budget = int(args[i + 1])
         del args[i:i + 2]
     off = "--off" in args
-    args = [a for a in args if a != "--off"]
-    task = args[0] if args else "Read every file in the repo, then list three risks per module."
+    no_notes = "--no-notes" in args  # show the thrash: clearing without telling the agent to take notes
+    args = [a for a in args if a not in ("--off", "--no-notes")]
+    task = args[0] if args else DEMO_TASK
     client = get_client()
     compactor = None if off else Compactor(client, budget=budget)
-    hooks = Hooks(before_model=compactor) if compactor else Hooks()
-    result = run_agent(client, task, repo_tools(SAMPLE_REPO), hooks=hooks, max_turns=30)
-    print(result.text)
+    hooks = Hooks(before_model=compactor, after_turn=trace_turn) if compactor else Hooks(after_turn=trace_turn)
+    system = "" if no_notes else NOTE_TAKING_SYSTEM
+    result = run_agent(client, task, repo_tools(SAMPLE_REPO), system=system, hooks=hooks, max_turns=30)
+    print("\n" + result.text)
     print(f"\nTurns: {result.turns}   input tokens billed: {result.input_tokens:,}")
     if compactor:
         print(f"Compactions: {compactor.compactions}  (estimated tokens before -> after: {compactor.history})")

@@ -32,7 +32,7 @@ class Config:
     model: str = os.environ.get("COURSE_MODEL", "claude-sonnet-5-5")
     max_turns: int = 30
     budget_tokens: int = 60_000          # compaction triggers at 70% of this estimate
-    keep_tool_results: int = 4
+    keep_tool_results: int = 2          # tool-result TURNS kept intact; the newest is never cleared
     auto_approve: bool = False
     skills_dir: Path = HERE.parent / "ch08-skills" / "skills"
     state_dir: Path = HERE / ".harness"  # memory/, progress.md, traces/
@@ -176,10 +176,11 @@ class Harness:
         return None if self.approve(name, args) else "Denied by the user."
 
     def manage_context(self, messages: list) -> list:
-        results = [(i, j) for i, m in enumerate(messages) if isinstance(m["content"], list)
-                   for j, b in enumerate(m["content"]) if isinstance(b, dict) and b.get("type") == "tool_result"]
-        for i, j in results[:-self.cfg.keep_tool_results]:
-            messages[i]["content"][j] = dict(messages[i]["content"][j], content=CLEARED)
+        turns = [i for i, m in enumerate(messages) if isinstance(m["content"], list)
+                 and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in m["content"])]
+        for i in turns[:-max(self.cfg.keep_tool_results, 1)]:
+            messages[i]["content"] = [dict(b, content=CLEARED) if isinstance(b, dict) and b.get("type") == "tool_result"
+                                      else b for b in messages[i]["content"]]
         size = len(json.dumps(messages, default=lambda o: o.model_dump() if hasattr(o, "model_dump") else str(o))) // 4
         if size < 0.7 * self.cfg.budget_tokens:
             return messages
