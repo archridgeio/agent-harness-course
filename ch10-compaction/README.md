@@ -10,7 +10,7 @@ Compaction is controlled forgetting: decide what the agent must never forget.
 2. **Compaction** — past 70% of the budget, older turns are summarised (task, decisions, files, errors, what's left) and replaced by the summary. The cut always lands on an assistant message, so tool calls and their results stay paired.
 
 ```bash
-python ch10-compaction/compaction.py --budget 6000 "Read every file, then list three risks per module."
+python ch10-compaction/compaction.py --budget 12000 "Read every file, then list three risks per module."
 python ch10-compaction/compaction.py --off          "Read every file, then list three risks per module."
 ```
 

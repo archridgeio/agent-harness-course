@@ -6,7 +6,7 @@ Two techniques, both plugged into the loop's before_model hook:
 2. Compaction: once the window passes a threshold (70% of a budget), older
    turns are summarised by the model and replaced with that summary.
 
-Run:  python ch10-compaction/compaction.py --budget 6000 "Review every module and list risks"
+Run:  python ch10-compaction/compaction.py --budget 12000 "Review every module and list risks"
       python ch10-compaction/compaction.py --off "Review every module and list risks"
 """
 

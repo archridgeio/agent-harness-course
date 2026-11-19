@@ -10,6 +10,7 @@ Run:  python ch17-evals-tracing/run_evals.py --variant full
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -29,8 +30,8 @@ def variant_tools(variant: str) -> Toolbox:
 
 
 def grade(answer: str, task: dict) -> bool:
-    text = answer.lower()
-    return all(s.lower() in text for s in task["must_contain"])
+    """Each must_contain entry is a case-insensitive regex, so "(2|two) decimal" accepts either wording."""
+    return all(re.search(pattern, answer, re.IGNORECASE) for pattern in task["must_contain"])
 
 
 def run(variant: str = "full", client=None, tasks=TASKS) -> dict:
