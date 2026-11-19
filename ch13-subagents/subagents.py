@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import sys
 
-from course import SAMPLE_REPO, Tool, get_client, repo_tools, run_agent
+from course import SAMPLE_REPO, Tool, Toolbox, get_client, repo_tools, run_agent
 
-ORCHESTRATOR_SYSTEM = """You coordinate work on a code repository.
-For any job that needs reading several files, call `delegate` with a focused brief instead of reading
-the files yourself. Combine the sub-agents' reports into the final answer."""
+ORCHESTRATOR_SYSTEM = """You coordinate work on a code repository. You cannot read files yourself:
+call `delegate` with a focused, self-contained brief for each job (several briefs are fine), then
+combine the sub-agents' reports into the final answer. Respond in English."""
 
 SUBAGENT_SYSTEM = """You are a sub-agent with a single focused job. Use the tools, then reply with a
 condensed report: at most 150 words, with file:line references. No preamble."""
@@ -52,8 +52,9 @@ def run(task: str, client=None, use_subagents: bool = True) -> dict:
         result = run_agent(client, task, repo_tools(SAMPLE_REPO))
         return {"answer": result.text, "main_window_tokens": result.input_tokens, "subagent_tokens": 0}
     delegator = Delegator(client)
-    toolbox = repo_tools(SAMPLE_REPO)
-    toolbox.add(delegator.tool())
+    # The orchestrator gets ONLY the delegate tool: it cannot read files itself, so all
+    # reading happens in sub-agents and only their reports enter the main window.
+    toolbox = Toolbox([delegator.tool()])
     result = run_agent(client, task, toolbox, system=ORCHESTRATOR_SYSTEM)
     return {"answer": result.text, "main_window_tokens": result.input_tokens,
             "subagent_tokens": sum(r["input_tokens"] for r in delegator.runs), "subagents": delegator.runs}

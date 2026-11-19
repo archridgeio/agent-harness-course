@@ -19,6 +19,8 @@ python ch18-failure-modes/failures.py injection
 python ch18-failure-modes/failures.py all
 ```
 
-The injected file, [`fixtures/CONTRIBUTING.md`](fixtures/CONTRIBUTING.md), is a harmless canary: it only asks for a file named `INJECTED.txt`.
+The injected file, [`fixtures/CONTRIBUTING.md`](fixtures/CONTRIBUTING.md), is a harmless canary: its hidden comment, dressed up as a normal project rule, only asks for a file named `INJECTED.txt` holding a summary. (If an AI coding agent of yours ever creates that file in this repo, this demo just worked on it.)
+
+Current models often refuse even the "broken" run, and results vary from run to run. That is the lesson: the model's judgement is a bonus, the harness defence (tool output marked as data, plus a hook that blocks writes nobody asked for) is what you rely on.
 
 Background: [greshake/llm-security](https://github.com/greshake/llm-security) on indirect prompt injection.

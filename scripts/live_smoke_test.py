@@ -63,6 +63,8 @@ def all_of(*checks):
 
 
 def compactions_happened(out: str, repo: Path) -> str | None:
+    if "Stopped: reached max_turns" in out:
+        return "agent hit max_turns before finishing (budget too tight?)"
     m = re.search(r"Compactions: (\d+)", out)
     if not m:
         return "no 'Compactions:' line"
@@ -75,6 +77,18 @@ def cache_hits(out: str, repo: Path) -> str | None:
     return None if any(reads) else "no cache reads in the cached run (prefix may be below the model's caching minimum)"
 
 
+def subagents_used(out: str, repo: Path) -> str | None:
+    m = re.search(r"Sub-agent input tokens:\s+([\d,]+)", out)
+    if not m:
+        return "no sub-agent token line"
+    return None if int(m.group(1).replace(",", "")) > 0 else "orchestrator never delegated (0 sub-agent tokens)"
+
+
+def english(out: str, repo: Path) -> str | None:
+    cjk = len(re.findall(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]", out))
+    return None if cjk < 5 else "answer is not in English"
+
+
 def features_done(out: str, repo: Path) -> str | None:
     return None if '"passes": false' not in out and '"passes": true' in out else "some features still have passes=false"
 
@@ -84,7 +98,7 @@ def evals_score(out: str, repo: Path) -> str | None:
     if not m:
         return "no eval summary line"
     passed, total = map(int, m.groups())
-    return None if passed >= total - 1 else f"only {passed}/{total} evals passed"
+    return None if passed == total else f"only {passed}/{total} evals passed"
 
 
 CHECKS = [
@@ -103,14 +117,14 @@ CHECKS = [
           contains("Fixed")),
     Check(9, "permissions (auto mode)", ["ch09-permissions/permissions.py", "--mode", "auto",
                                          "Fix the bug in inventory/stats.py, then run: python -m pytest -q"],
-          all_of(contains("Permission log"), bug_fixed_and_tests_pass), timeout=420),
-    Check(10, "compaction", ["ch10-compaction/compaction.py", "--budget", "6000",
+          all_of(contains("Permission log"), english, bug_fixed_and_tests_pass), timeout=420),
+    Check(10, "compaction", ["ch10-compaction/compaction.py", "--budget", "12000",
                              "Read every file in the repo, then list one risk per module."],
           compactions_happened, timeout=600),
     Check(11, "RAG vs agentic search", ["ch11-retrieval/compare.py"], contains("RAG", "Agentic"), timeout=600),
     Check(12, "memory (session 1)", ["ch12-memory/memory_tool.py", "session1"], contains("discount")),
     Check(12, "memory (session 2 recalls)", ["ch12-memory/memory_tool.py", "session2"], contains("50")),
-    Check(13, "sub-agents", ["ch13-subagents/subagents.py"], contains("Sub-agent input tokens")),
+    Check(13, "sub-agents", ["ch13-subagents/subagents.py"], subagents_used),
     Check(14, "prompt caching", ["ch14-caching/caching.py"], cache_hits, timeout=600),
     Check(15, "long-horizon sessions", ["ch15-long-horizon/long_task.py", "--reset"], features_done, timeout=1500),
     Check(16, "single vs multi-agent", ["ch16-multi-agent/single_vs_multi.py"],
@@ -120,7 +134,7 @@ CHECKS = [
           contains("injection — FIXED — no injected file"), timeout=900),
     Check(19, "mini harness", ["ch19-mini-harness/mini_harness.py", "--auto", "--repo", "{repo}",
                                "Fix the failing test and run the tests"],
-          all_of(contains("input tokens"), bug_fixed_and_tests_pass), timeout=600),
+          all_of(contains("input tokens"), english, bug_fixed_and_tests_pass), timeout=600),
 ]
 
 
@@ -151,7 +165,7 @@ def run_check(check: Check) -> dict:
         reason = check.expect(out, repo)
         status = "PASS" if reason is None else "FAIL"
     return {"check": check, "status": status, "reason": reason or "", "seconds": seconds,
-            "stdout": out[-3000:], "stderr": err[-3000:]}
+            "stdout": out[-6000:], "stderr": err[-3000:]}
 
 
 def write_report(results: list[dict], path: Path) -> None:

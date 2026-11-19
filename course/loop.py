@@ -21,6 +21,10 @@ from course.client import MODEL
 from course.tools import Toolbox
 
 
+# Used when a chapter passes no system prompt, so answers stay in English on camera.
+DEFAULT_SYSTEM = "You are a helpful repo assistant. Always respond in English."
+
+
 @dataclass
 class Hooks:
     before_model: Callable[[list], list] | None = None
@@ -79,8 +83,7 @@ def run_agent(
             messages[:] = hooks.before_model(messages)
 
         kwargs: dict[str, Any] = {"model": model, "max_tokens": max_tokens, "messages": messages}
-        if system:
-            kwargs["system"] = system
+        kwargs["system"] = system or DEFAULT_SYSTEM
         if tool_specs:
             kwargs["tools"] = tool_specs
         response = client.messages.create(**kwargs)
