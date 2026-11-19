@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "repo-assistant": {
+      "command": "python",
+      "args": ["/absolute/path/to/agent-harness-course/ch06-mcp/server.py"],
+      "env": {
+        "COURSE_REPO": "/absolute/path/to/agent-harness-course/sample-repo"
+      }
+    }
+  }
+}
