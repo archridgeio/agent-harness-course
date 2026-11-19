@@ -6,9 +6,9 @@ Two techniques, both plugged into the loop's before_model hook:
 2. Compaction: once the window passes a threshold (70% of a budget), older
    turns are summarised by the model and replaced with that summary.
 
-Run:  python ch10-compaction/compaction.py --budget 6000 "Review every module and list risks"
-      python ch10-compaction/compaction.py --budget 6000 --no-notes "..."   # watch it re-read files
-      python ch10-compaction/compaction.py --off "Review every module and list risks"
+Run:  python ch10-compaction/compaction.py --budget 3000             # demo task, compaction on
+      python ch10-compaction/compaction.py --budget 3000 --no-notes  # no note-taking prompt
+      python ch10-compaction/compaction.py --off                     # no clearing or compaction
 """
 
 from __future__ import annotations
@@ -127,6 +127,11 @@ So after each tool result, write one short line with the facts you will need lat
 already read: use your notes."""
 
 
+# A long, step-by-step session. The sample repo is tiny, so the demo uses a small --budget to
+# stand in for a large codebase filling a real context window.
+DEMO_TASK = ('Review the repo one module at a time. For each module in inventory/: read the module, then read the tests that cover it, then write a 3-line review before moving to the next module. Finish with a summary table.')
+
+
 def trace_turn(turn, response, messages):
     calls = [f"{b.name}({', '.join(f'{v}' for v in (b.input or {}).values())})"
              for b in response.content if b.type == "tool_use"]
@@ -143,7 +148,7 @@ if __name__ == "__main__":
     off = "--off" in args
     no_notes = "--no-notes" in args  # show the thrash: clearing without telling the agent to take notes
     args = [a for a in args if a not in ("--off", "--no-notes")]
-    task = args[0] if args else "Read every file in the repo, then list three risks per module."
+    task = args[0] if args else DEMO_TASK
     client = get_client()
     compactor = None if off else Compactor(client, budget=budget)
     hooks = Hooks(before_model=compactor, after_turn=trace_turn) if compactor else Hooks(after_turn=trace_turn)
