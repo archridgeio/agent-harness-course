@@ -1,0 +1,5 @@
+Which function calculates the average stock level, and is it correct?
+What discount does an order of 60 units get?
+What happens if I remove more stock than is available?
+Which SKUs count as low stock?
+Where is money rounded, and to how many decimals?
