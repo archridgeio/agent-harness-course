@@ -12,3 +12,6 @@ ch12-memory/.memories/
 ch15-long-horizon/workspace/
 ch17-evals-tracing/traces/
 ch19-mini-harness/.harness/
+
+# live API test report
+smoke-report.md
