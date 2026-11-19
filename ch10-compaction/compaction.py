@@ -7,6 +7,7 @@ Two techniques, both plugged into the loop's before_model hook:
    turns are summarised by the model and replaced with that summary.
 
 Run:  python ch10-compaction/compaction.py --budget 12000 "Review every module and list risks"
+      python ch10-compaction/compaction.py --budget 12000 --no-notes "..."   # watch it re-read files
       python ch10-compaction/compaction.py --off "Review every module and list risks"
 """
 
@@ -113,6 +114,19 @@ class Compactor:
         return compacted
 
 
+NOTE_TAKING_SYSTEM = """You are a repo assistant. Respond in English.
+Old tool results are cleared from your context to save space, and older turns may be summarised.
+So after each tool result, write one short line with the facts you will need later
+(for example: "stats.py - risk: mean() divides by len - 1"). Never re-read a file you have
+already read: use your notes."""
+
+
+def trace_turn(turn, response, messages):
+    calls = [f"{b.name}({', '.join(f'{v}' for v in (b.input or {}).values())})"
+             for b in response.content if b.type == "tool_use"]
+    print(f"  turn {turn:>2}: {', '.join(calls) or 'final answer'}", flush=True)
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
     budget = 20_000
@@ -121,13 +135,15 @@ if __name__ == "__main__":
         budget = int(args[i + 1])
         del args[i:i + 2]
     off = "--off" in args
-    args = [a for a in args if a != "--off"]
+    no_notes = "--no-notes" in args  # show the thrash: clearing without telling the agent to take notes
+    args = [a for a in args if a not in ("--off", "--no-notes")]
     task = args[0] if args else "Read every file in the repo, then list three risks per module."
     client = get_client()
     compactor = None if off else Compactor(client, budget=budget)
-    hooks = Hooks(before_model=compactor) if compactor else Hooks()
-    result = run_agent(client, task, repo_tools(SAMPLE_REPO), hooks=hooks, max_turns=30)
-    print(result.text)
+    hooks = Hooks(before_model=compactor, after_turn=trace_turn) if compactor else Hooks(after_turn=trace_turn)
+    system = "" if no_notes else NOTE_TAKING_SYSTEM
+    result = run_agent(client, task, repo_tools(SAMPLE_REPO), system=system, hooks=hooks, max_turns=30)
+    print("\n" + result.text)
     print(f"\nTurns: {result.turns}   input tokens billed: {result.input_tokens:,}")
     if compactor:
         print(f"Compactions: {compactor.compactions}  (estimated tokens before -> after: {compactor.history})")
