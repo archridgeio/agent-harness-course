@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-harness-course"
+version = "0.1.0"
+description = "Companion code for the Archridge video course: Agent Harnesses & Context Management"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=0.60",
+    "mcp>=1.10,<2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools]
+packages = ["course"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

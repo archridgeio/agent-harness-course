@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.egg-info/
+build/
+dist/
+.env
+
+# state created by running the chapters
+ch12-memory/.memories/
+ch15-long-horizon/workspace/
+ch17-evals-tracing/traces/
+ch19-mini-harness/.harness/
