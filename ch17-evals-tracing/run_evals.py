@@ -42,7 +42,7 @@ def run(variant: str = "full", client=None, tasks=TASKS) -> dict:
         out = run_agent(client, task["question"], tracer.wrap(variant_tools(variant)),
                         hooks=Hooks(after_turn=tracer.after_turn), max_turns=12)
         results.append({"id": task["id"], "passed": grade(out.text, task), "turns": out.turns,
-                        "input_tokens": out.input_tokens})
+                        "input_tokens": out.input_tokens, "answer": out.text.strip()})
     passed = sum(r["passed"] for r in results)
     return {"variant": variant, "passed": passed, "total": len(results),
             "input_tokens": sum(r["input_tokens"] for r in results), "results": results}
@@ -53,5 +53,7 @@ if __name__ == "__main__":
     report = run(variant)
     for r in report["results"]:
         print(f"{'PASS' if r['passed'] else 'FAIL'}  {r['id']:<12} {r['turns']:>2} turns  {r['input_tokens']:>7,} tokens")
+        if not r["passed"]:
+            print(f"      answer was: {r['answer'][:200]!r}")
     print(f"\n{report['variant']}: {report['passed']}/{report['total']} passed, "
           f"{report['input_tokens']:,} input tokens. Traces in ch17-evals-tracing/traces/")

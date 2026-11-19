@@ -1,5 +1,5 @@
 {"id": "mean-bug", "question": "Which function has a bug in inventory/stats.py, and what is the fix? Name the function.", "must_contain": ["mean", "len\\(values\\)"]}
 {"id": "bulk-60", "question": "What bulk discount rate does an order of 60 units get? Answer with a percentage.", "must_contain": ["10 ?%|10 percent"]}
 {"id": "overdraw", "question": "What exception does Stock.remove raise when removing more than is in stock?", "must_contain": ["ValueError"]}
-{"id": "rounding", "question": "To how many decimal places is money rounded in pricing.py? Answer with a number.", "must_contain": ["(2|two) decimal"]}
+{"id": "rounding", "question": "To how many decimal places is money rounded in pricing.py? Answer with a number.", "must_contain": ["\\b(2|two)\\b"]}
 {"id": "low-stock", "question": "Which method lists low-stock SKUs, and is the comparison < or <=?", "must_contain": ["low_stock", "<="]}
