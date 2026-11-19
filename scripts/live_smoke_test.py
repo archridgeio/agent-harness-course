@@ -68,7 +68,11 @@ def compactions_happened(out: str, repo: Path) -> str | None:
     m = re.search(r"Compactions: (\d+)", out)
     if not m:
         return "no 'Compactions:' line"
-    return None if int(m.group(1)) >= 1 else "ran, but no compaction triggered (raise the task size or lower --budget)"
+    if int(m.group(1)) < 1:
+        return "ran, but no compaction triggered (raise the task size or lower --budget)"
+    pairs = [tuple(map(int, p)) for p in re.findall(r"\((\d+), (\d+)\)", out.split("Compactions:")[-1])]
+    grew = [p for p in pairs if p[1] >= p[0]]
+    return f"compaction made the context bigger: {grew}" if grew else None
 
 
 def cache_hits(out: str, repo: Path) -> str | None:

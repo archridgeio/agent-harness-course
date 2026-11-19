@@ -27,7 +27,7 @@ Keep, in this order:
 3. Files read or changed, with the key facts learned from each (function names, line numbers).
 4. Errors seen and how they were handled.
 5. What is still left to do.
-Drop raw tool output, repeated reasoning and pleasantries. Use short bullet points."""
+Drop raw tool output, repeated reasoning and pleasantries. Use short bullet points, 150 words at most."""
 
 
 def _plain(obj):
@@ -90,6 +90,7 @@ class Compactor:
         self.client, self.budget, self.threshold = client, budget, threshold
         self.keep_recent, self.keep_tool_results, self.model = keep_recent, keep_tool_results, model
         self.compactions = 0
+        self.skipped = 0
         self.history: list[tuple[int, int]] = []  # (tokens before, tokens after)
 
     def cut_index(self, messages: list) -> int | None:
@@ -105,18 +106,22 @@ class Compactor:
         if before < self.threshold * self.budget:
             return messages
         cut = self.cut_index(messages)
-        if cut is None:
-            return messages
+        if cut is None or estimate_tokens(messages[:cut]) < 0.3 * before:
+            return messages  # too little old history to be worth summarising
         summary = self.client.messages.create(
-            model=self.model, max_tokens=1500, system=SUMMARY_PROMPT,
+            model=self.model, max_tokens=600, system=SUMMARY_PROMPT,
             messages=[{"role": "user", "content": transcript(messages[:cut])}],
         )
         text = "".join(b.text for b in summary.content if b.type == "text")
         compacted = [{"role": "user", "content": f"<summary_of_earlier_work>\n{text}\n</summary_of_earlier_work>\n"
                                                  "Continue the task from where this summary leaves off."}]
         compacted += messages[cut:]
+        after = estimate_tokens(compacted)
+        if after >= before:
+            self.skipped += 1  # the summary would not save space: keep the original history
+            return messages
         self.compactions += 1
-        self.history.append((before, estimate_tokens(compacted)))
+        self.history.append((before, after))
         return compacted
 
 
