@@ -21,6 +21,20 @@ def test_tool_result_clearing_keeps_newest(load):
     assert ch10.CLEARED not in str(result.messages)
 
 
+def test_parallel_results_reach_the_model_before_clearing(load):
+    ch10 = load("ch10-compaction/compaction.py")
+    from fakes import Block, Response, Usage
+
+    eight_reads = Response([Block("tool_use", id=f"r{i}", name="read_file", input={"path": "inventory/stats.py"})
+                            for i in range(8)], "tool_use", Usage())
+    client = FakeClient([eight_reads, text("done")])
+    seen = []
+    run_agent(client, "read everything", repo_tools(SAMPLE_REPO),
+              hooks=Hooks(before_model=lambda m: seen.append(ch10.clear_old_tool_results(m, 1)) or seen[-1]))
+    newest = seen[-1][-1]["content"]
+    assert len(newest) == 8 and all(b["content"] != ch10.CLEARED for b in newest)
+
+
 def test_compactor_summarises_and_keeps_pairs(load):
     ch10 = load("ch10-compaction/compaction.py")
     script = [tool("read_file", {"path": "inventory/stats.py"}) for _ in range(6)] + [text("done")]

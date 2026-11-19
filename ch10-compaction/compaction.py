@@ -6,8 +6,8 @@ Two techniques, both plugged into the loop's before_model hook:
 2. Compaction: once the window passes a threshold (70% of a budget), older
    turns are summarised by the model and replaced with that summary.
 
-Run:  python ch10-compaction/compaction.py --budget 12000 "Review every module and list risks"
-      python ch10-compaction/compaction.py --budget 12000 --no-notes "..."   # watch it re-read files
+Run:  python ch10-compaction/compaction.py --budget 6000 "Review every module and list risks"
+      python ch10-compaction/compaction.py --budget 6000 --no-notes "..."   # watch it re-read files
       python ch10-compaction/compaction.py --off "Review every module and list risks"
 """
 
@@ -42,15 +42,21 @@ def estimate_tokens(messages: list) -> int:
     return len(json.dumps(messages, default=_plain)) // 4
 
 
-def clear_old_tool_results(messages: list, keep_last: int = 3) -> list:
-    """Replace the content of all but the newest `keep_last` tool results."""
-    positions = [(i, j) for i, m in enumerate(messages) if m["role"] == "user" and isinstance(m["content"], list)
-                 for j, block in enumerate(m["content"]) if isinstance(block, dict) and block.get("type") == "tool_result"]
-    to_clear = set(positions[:-keep_last] if keep_last else positions)
+def clear_old_tool_results(messages: list, keep_last: int = 2) -> list:
+    """Clear tool output from all but the newest `keep_last` tool-result TURNS.
+
+    Counting turns, not individual results, matters: a model often reads 8 files in one
+    turn, and those results must reach it intact at least once. The newest turn's results
+    are never cleared, because the model has not seen them yet.
+    """
+    turns = [i for i, m in enumerate(messages) if m["role"] == "user" and isinstance(m["content"], list)
+             and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in m["content"])]
+    to_clear = set(turns[:-max(keep_last, 1)])
     out = []
     for i, m in enumerate(messages):
-        if any(i == p[0] for p in to_clear):
-            content = [dict(b, content=CLEARED) if (i, j) in to_clear else b for j, b in enumerate(m["content"])]
+        if i in to_clear:
+            content = [dict(b, content=CLEARED) if isinstance(b, dict) and b.get("type") == "tool_result" else b
+                       for b in m["content"]]
             out.append({"role": m["role"], "content": content})
         else:
             out.append(m)
@@ -80,7 +86,7 @@ class Compactor:
     """before_model hook: clear old tool results, and summarise when over the threshold."""
 
     def __init__(self, client, budget: int = 20_000, threshold: float = 0.7, keep_recent: int = 4,
-                 keep_tool_results: int = 3, model: str = MODEL):
+                 keep_tool_results: int = 2, model: str = MODEL):
         self.client, self.budget, self.threshold = client, budget, threshold
         self.keep_recent, self.keep_tool_results, self.model = keep_recent, keep_tool_results, model
         self.compactions = 0
