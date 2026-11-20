@@ -24,6 +24,14 @@ def test_ch02_loop_runs_tools_until_done(load):
     assert "len(values) - 1" in tool_result
 
 
+def test_ch02_trace_prints_each_turn(load, capsys):
+    ch02 = load("ch02-agent-loop/trace.py")
+    client = FakeClient([tool("list_files"), text("found it")])
+    assert ch02.trace("find the bug", client) == "found it"
+    out = capsys.readouterr().out
+    assert "[turn 1] stop_reason=tool_use" in out and "name=list_files" in out and "[turn 2]" in out
+
+
 def test_ch02_blocks_paths_outside_repo(load):
     ch02 = load("ch02-agent-loop/loop.py")
     assert "outside" in ch02.run_tool("read_file", {"path": "../README.md"})
