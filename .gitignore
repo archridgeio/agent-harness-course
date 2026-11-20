@@ -15,3 +15,6 @@ ch19-mini-harness/.harness/
 
 # live API test report
 smoke-report.md
+
+# local demo output
+ch0*_*.txt
