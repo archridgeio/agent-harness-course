@@ -4,6 +4,8 @@ Companion code for the **Archridge** video course: 20 chapters, 10–15 minutes 
 
 > The model is the engine; the harness is the car. Learn to design the loop, tools and context that make an agent actually work.
 
+▶ **Watch the course:** [full playlist on YouTube](https://www.youtube.com/playlist?list=PLZHPW1v0SDCQ) · new chapters are added as they're released.
+
 Every chapter has a folder with runnable code and a README that links its video. One project runs through the whole course: a **repo assistant** agent that reads, searches and fixes the small Python project in [`sample-repo/`](sample-repo/).
 
 ## Setup
@@ -29,11 +31,11 @@ Run any chapter from the repo root, e.g. `python ch02-agent-loop/loop.py "Find t
 
 | Ch | Module | Chapter | Code | Video |
 | --- | --- | --- | --- | --- |
-| 1 | Foundations | What is an agent harness? | [ch01](ch01-what-is-a-harness/) | _coming soon_ |
-| 2 | Foundations | Anatomy of the agent loop | [ch02](ch02-agent-loop/) | _coming soon_ |
-| 3 | Foundations | The context window is working memory | [ch03](ch03-context-window/) | _coming soon_ |
-| 4 | Foundations | Context engineering vs prompt engineering | [ch04](ch04-context-engineering/) | _coming soon_ |
-| 5 | Building the harness | Designing tools agents can actually use | [ch05](ch05-tool-design/) | _coming soon_ |
+| 1 | Foundations | What is an agent harness? | [ch01](ch01-what-is-a-harness/) | [What Is an Agent Harness? Same AI Model, Two Results!](https://youtu.be/e4OmXyfkSK0) |
+| 2 | Foundations | Anatomy of the agent loop | [ch02](ch02-agent-loop/) | [How AI Agents Work: The Agent Loop Explained Line by Line](https://youtu.be/g1y_oGTEazg) |
+| 3 | Foundations | The context window is working memory | [ch03](ch03-context-window/) | [Why Bigger Context Windows Don't Fix Your AI Agent](https://youtu.be/J2ec-GBcL6g) |
+| 4 | Foundations | Context engineering vs prompt engineering | [ch04](ch04-context-engineering/) | [Context Engineering vs Prompt Engineering, Explained](https://youtu.be/dMVLBjKqnZk) |
+| 5 | Building the harness | Designing tools agents can actually use | [ch05](ch05-tool-design/) | [How to Design Tools for AI Agents: Descriptions, Schemas, Errors](https://youtu.be/6jl7OZ8jbI8) |
 | 6 | Building the harness | MCP: the standard plug for tools and context | [ch06](ch06-mcp/) | _coming soon_ |
 | 7 | Building the harness | System prompts and project instruction files | [ch07](ch07-instruction-files/) | _coming soon_ |
 | 8 | Building the harness | Skills and progressive disclosure | [ch08](ch08-skills/) | _coming soon_ |

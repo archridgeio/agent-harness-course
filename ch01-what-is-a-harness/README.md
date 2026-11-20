@@ -1,6 +1,6 @@
 # Chapter 1 — What is an agent harness?
 
-**Video:** _link added on release_ · **Length:** ~12 min
+**Video:** [What Is an Agent Harness? Same AI Model, Two Results!](https://youtu.be/e4OmXyfkSK0) · **Length:** 5:41
 
 The model is the engine; the harness is the car: the loop, tools, instructions, memory and permissions around the model.
 

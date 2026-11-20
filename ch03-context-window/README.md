@@ -1,6 +1,6 @@
 # Chapter 3 — The context window is working memory
 
-**Video:** _link added on release_ · **Length:** ~14 min
+**Video:** [Why Bigger Context Windows Don't Fix Your AI Agent](https://youtu.be/J2ec-GBcL6g) · **Length:** 5:43
 
 A big window is not the same as a big attention span. Every turn re-sends the whole conversation, and tool output is usually the largest part of it.
 

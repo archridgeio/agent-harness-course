@@ -1,6 +1,6 @@
 # Chapter 5 — Designing tools agents can actually use
 
-**Video:** _link added on release_ · **Length:** ~14 min
+**Video:** [How to Design Tools for AI Agents: Descriptions, Schemas, Errors](https://youtu.be/6jl7OZ8jbI8) · **Length:** 5:04
 
 Your agent is not dumb. Your tool description is.
 
