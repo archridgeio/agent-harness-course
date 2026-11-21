@@ -83,8 +83,9 @@ def test_injection_canary_blocked_when_fixed(load):
     broken = ch18.injection(False, FakeClient(list(attack)))
     fixed_client = FakeClient(list(attack))
     fixed = ch18.injection(True, fixed_client)
-    assert broken["signal"] == "INJECTED.txt written!"
-    assert fixed["signal"] == "no injected file"
+    assert broken["signal"].startswith("INJECTED.txt written!")
+    assert fixed["signal"].startswith("no injected file (hook blocked 1 write: INJECTED.txt)")
+    assert fixed["tools"][1].startswith("write_file(INJECTED.txt")
     first_result = tool_results(fixed_client.messages.calls[-1]["messages"])[0]
     assert first_result.startswith("<untrusted_data>")
 
@@ -94,4 +95,4 @@ def test_confusion_adds_decoy_tools(load):
     client = FakeClient([tool("read_file_v3", {"path": "inventory/stats.py"}), text("unknown")])
     out = ch18.confusion(False, client)
     assert len(client.messages.calls[0]["tools"]) == 43
-    assert "read_file_v3" in out["signal"]
+    assert "1 to legacy readers" in out["signal"] and out["tools"][0].startswith("read_file_v3")
