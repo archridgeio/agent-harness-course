@@ -81,6 +81,17 @@ def run(task: str, client=None):
 if __name__ == "__main__":
     if "--run" in sys.argv:
         task = sys.argv[sys.argv.index("--run") + 1]
-        print(run(task).text)
+        result = run(task)
+        turn = 0
+        for msg in result.messages:
+            if msg["role"] != "assistant" or isinstance(msg["content"], str):
+                continue
+            turn += 1
+            for block in msg["content"]:
+                if getattr(block, "type", None) == "tool_use":
+                    args = ", ".join(f"{k}={v!r}" for k, v in block.input.items())
+                    print(f"[turn {turn}] {block.name}({args})")
+        print(f"\n{result.turns} turns · {result.input_tokens:,} input tokens\n")
+        print(result.text)
     else:
         print(window_report(discover()))
