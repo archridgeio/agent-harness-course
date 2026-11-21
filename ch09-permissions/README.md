@@ -10,6 +10,7 @@ The agent wants to run `rm -rf`. What happens next is a harness decision.
 - **Modes:** `ask` (you approve each write or command), `allowlist` (only named tools), `auto` (everything the hooks allow).
 
 ```bash
+python ch09-permissions/permissions.py --check
 python ch09-permissions/permissions.py --mode ask "Fix the failing test and run the tests"
 git checkout sample-repo   # undo the agent's fix afterwards
 ```
