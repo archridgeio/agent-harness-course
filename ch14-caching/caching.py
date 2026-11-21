@@ -4,14 +4,15 @@ Stable content first (tools, system prompt), volatile content last (the
 conversation). A cache_control breakpoint on the last stable block lets every
 later turn re-read that prefix from cache instead of paying full price.
 
-Run:  python ch14-caching/caching.py           # cached vs uncached, same task
+Run:  python ch14-caching/caching.py           # uncached, cached, and a cache broken by a timestamp
 """
 
 from __future__ import annotations
 
 import copy
+from datetime import datetime
 
-from course import SAMPLE_REPO, Hooks, get_client, repo_tools, run_agent
+from course import MODEL, SAMPLE_REPO, Hooks, get_client, repo_tools, run_agent
 from course.tools import read_file
 
 TASK = "Review each module in the repo one at a time and list one improvement per module."
@@ -33,7 +34,9 @@ def cached_request_parts(toolbox):
     return system, tools
 
 
-def run(client=None, cached: bool = True) -> list[dict]:
+def run(client=None, cached: bool = True, timestamp: bool = False) -> list[dict]:
+    """cached=False: no breakpoints. timestamp=True: cached, but the system prompt starts with the
+    current time, updated before every request, which is the classic way to break the cache."""
     client = client or get_client()
     toolbox = repo_tools(SAMPLE_REPO)
     rows: list[dict] = []
@@ -46,15 +49,27 @@ def run(client=None, cached: bool = True) -> list[dict]:
 
     if cached:
         system, tools = cached_request_parts(toolbox)
-        run_agent(client, TASK, toolbox, system=system, tools=tools, hooks=Hooks(after_turn=record), max_turns=12)
+        before = None
+        if timestamp:
+            def before(messages):
+                system[0]["text"] = f"Current time: {datetime.now().isoformat()}\n\n" + SYSTEM_TEXT
+                return messages
+        run_agent(client, TASK, toolbox, system=system, tools=tools,
+                  hooks=Hooks(before_model=before, after_turn=record), max_turns=12)
     else:
         run_agent(client, TASK, toolbox, system=SYSTEM_TEXT, hooks=Hooks(after_turn=record), max_turns=12)
     return rows
 
 
+# 5-minute cache writes cost 1.25x the base input price. Cache reads cost 0.1x on most models and
+# 0.05x on Claude Sonnet 5.5 and Opus 5.5 (Claude pricing docs, Nov 2026). Check before quoting.
+WRITE_MULT = 1.25
+READ_MULT = 0.05 if any(m in MODEL for m in ("sonnet-5-5", "opus-5-5")) else 0.1
+
+
 def relative_cost(rows: list[dict]) -> float:
-    """Input cost in 'uncached token' units: cache writes cost ~1.25x, cache reads ~0.1x (5-minute cache)."""
-    return sum(r["uncached_input"] + 1.25 * r["cache_write"] + 0.1 * r["cache_read"] for r in rows)
+    """Input cost in 'uncached token' units."""
+    return sum(r["uncached_input"] + WRITE_MULT * r["cache_write"] + READ_MULT * r["cache_read"] for r in rows)
 
 
 def show(label: str, rows: list[dict]) -> None:
@@ -67,6 +82,14 @@ def show(label: str, rows: list[dict]) -> None:
 
 if __name__ == "__main__":
     client = get_client()
-    show("without caching", run(client, cached=False))
-    show("with caching", run(client, cached=True))
+    print(f"Model: {MODEL} · cache write {WRITE_MULT}x · cache read {READ_MULT}x base input price")
+    runs = {"without caching": run(client, cached=False),
+            "with caching": run(client, cached=True),
+            "with caching, but a timestamp in the system prompt": run(client, cached=True, timestamp=True)}
+    for label, rows in runs.items():
+        show(label, rows)
+    base = relative_cost(runs["without caching"])
+    print("\nSummary (relative input cost, uncached run = 100%):")
+    for label, rows in runs.items():
+        print(f"  {label:<52} {relative_cost(rows):>8,.0f}  ({relative_cost(rows) / base:.0%})")
     print("\nThings that silently break the cache: timestamps in the system prompt, reordered tools, edited history.")
