@@ -10,8 +10,12 @@ More agents is not always better. Sometimes it is just more tokens.
 - **Orchestrator–worker** — one worker per module in parallel, then a synthesizer.
 
 ```bash
-python ch16-multi-agent/single_vs_multi.py
+python ch16-multi-agent/single_vs_multi.py                # single vs parallel multi-agent
+python ch16-multi-agent/single_vs_multi.py --sequential   # also run the workers one after another
 ```
+
+For every agent it prints model calls, tool calls, input and output tokens, its largest single window and its
+time, then a summary with each run's tokens and wall-clock time relative to the single agent.
 
 Rule of thumb: multi-agent for breadth (independent research, parallel reviews); single agent for tightly coupled work like a multi-file code change, where workers make conflicting decisions.
 

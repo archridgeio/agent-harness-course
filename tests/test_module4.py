@@ -49,6 +49,7 @@ def test_multi_agent_fans_out(load):
     client = FakeClient([text(f"review {i}") for i in range(len(mods))] + [text("combined report")])
     out = ch16.multi(client, parallel=False)
     assert out["agents"] == 4 and out["report"] == "combined report"
+    assert out["model_calls"] == 4 and [r["name"] for r in out["rows"]][-1] == "synthesizer"
 
 
 def test_tracer_records_turns_and_tools(load, tmp_path):
