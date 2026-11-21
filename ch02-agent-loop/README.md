@@ -1,6 +1,6 @@
 # Chapter 2 — Anatomy of the agent loop
 
-**Video:** _link added on release_ · **Length:** ~13 min
+**Video:** [How AI Agents Work: The Agent Loop Explained Line by Line](https://youtu.be/g1y_oGTEazg) · **Length:** 6:49
 
 Every agent is a while-loop. [`loop.py`](loop.py) is the whole thing in about 40 lines:
 

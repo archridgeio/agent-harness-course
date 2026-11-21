@@ -1,6 +1,6 @@
 # Chapter 4 — Context engineering vs prompt engineering
 
-**Video:** _link added on release_ · **Length:** ~12 min
+**Video:** [Context Engineering vs Prompt Engineering, Explained](https://youtu.be/dMVLBjKqnZk) · **Length:** 5:30
 
 Prompt engineering writes one message. Context engineering designs everything the model sees, every turn:
 
