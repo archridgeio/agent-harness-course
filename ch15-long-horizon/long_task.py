@@ -65,7 +65,7 @@ def setup_workspace(reset: bool = False) -> None:
 
 def commit(message: str) -> None:
     git("add", "-A")
-    git("-c", "user.name=harness", "-c", "user.email=harness@example.com", "commit", "-qm", message)
+    git("-c", "user.name=harness", "-c", "user.email=harness@example.com", "commit", "--allow-empty", "-qm", message)
 
 
 def features() -> list[dict]:
