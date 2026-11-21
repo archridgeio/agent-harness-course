@@ -7,8 +7,11 @@ Pattern (initializer + worker sessions):
   files. The harness commits after every session, so git is the checkpoint log.
 - Kill it at any point and run it again: it resumes from the files.
 
-Run:  python ch15-long-horizon/long_task.py            # run until done (max 8 sessions)
-      python ch15-long-horizon/long_task.py --reset    # start over from a clean copy
+Run:  python ch15-long-horizon/long_task.py                          # run until done (max 8 sessions)
+      python ch15-long-horizon/long_task.py --reset                  # start over from a clean copy
+      python ch15-long-horizon/long_task.py --reset --stop-after 2   # stop after 2 worker sessions
+      python ch15-long-horizon/long_task.py --show                   # print the state files and git log
+Ctrl+C at any point stops the run; the next run resumes from the last commit.
 """
 
 from __future__ import annotations
@@ -70,12 +73,15 @@ def features() -> list[dict]:
     return json.loads(path.read_text()) if path.exists() else []
 
 
-def toolbox():
+def toolbox(last_tests: dict | None = None):
     tb = repo_tools(WORKSPACE, writable=True)
 
     def run_tests() -> str:
         proc = subprocess.run([sys.executable, "-m", "pytest", "-q"], cwd=WORKSPACE, capture_output=True,
                               text=True, timeout=120)
+        lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
+        if last_tests is not None and lines:
+            last_tests["line"] = lines[-1]
         return proc.stdout[-3000:] + proc.stderr[-1000:]
 
     tb.add(Tool("run_tests", "Run the test suite with pytest and return the summary.",
@@ -85,28 +91,111 @@ def toolbox():
     return tb
 
 
-def run(client=None, max_sessions: int = 8, reset: bool = False) -> list[dict]:
+def tool_calls(messages: list) -> list[str]:
+    calls = []
+    for m in messages:
+        if m["role"] == "assistant" and not isinstance(m["content"], str):
+            for b in m["content"]:
+                if getattr(b, "type", None) == "tool_use":
+                    calls.append(f"{b.name}({', '.join(str(v)[:40] for v in (b.input or {}).values())})")
+    return calls
+
+
+def tokens(result) -> int:
+    return sum((u.input_tokens or 0) + (u.output_tokens or 0) for u in result.usage)
+
+
+def peak_window(result) -> int:
+    """Largest single request in the session: how full its context window got."""
+    return max((u.input_tokens or 0 for u in result.usage), default=0)
+
+
+def next_session_number() -> int:
+    log = git("log", "--format=%s")
+    done = [int(line.split()[1].rstrip(":")) for line in log.splitlines()
+            if line.startswith("session ") and line.split()[1].rstrip(":").isdigit()]
+    return max(done, default=0) + 1
+
+
+def report(result, last_tests: dict) -> None:
+    for call in tool_calls(result.messages):
+        print(f"    {call}")
+    print(f"  turns {result.turns} · tokens {tokens(result):,} · largest window {peak_window(result):,}")
+    if last_tests.get("line"):
+        print(f"  tests: {last_tests['line']}")
+
+
+def run(client=None, max_sessions: int = 8, reset: bool = False, stop_after: int | None = None) -> list[dict]:
     client = client or get_client()
     setup_workspace(reset)
     log = []
-    if not features():
-        run_agent(client, f"Spec:\n{SPEC}", toolbox(), system=INITIALIZER_SYSTEM, max_turns=10)
-        commit("session 0: initializer")
-        log.append({"session": 0, "remaining": sum(not f["passes"] for f in features())})
-    for n in range(1, max_sessions + 1):
-        remaining = [f for f in features() if not f["passes"]]
-        if not remaining:
-            break
-        result = run_agent(client, "Continue the long-running task.", toolbox(), system=WORKER_SYSTEM, max_turns=25)
-        commit(f"session {n}: {remaining[0]['id']}")
-        log.append({"session": n, "target": remaining[0]["id"], "turns": result.turns,
-                    "remaining": sum(not f["passes"] for f in features())})
-        print(f"session {n}: worked on {remaining[0]['id']} in {result.turns} turns; "
-              f"{log[-1]['remaining']} features left")
+    fs = features()
+    if fs:
+        done = sum(f["passes"] for f in fs)
+        print(f"Resuming: {done} of {len(fs)} features pass. Last checkpoint: {git('log', '-1', '--oneline')}")
+    else:
+        print(f"Fresh start. Last checkpoint: {git('log', '-1', '--oneline')}")
+    session = None
+    try:
+        if not features():
+            session = 0
+            print("\nsession 0 · initializer · fresh window")
+            last_tests: dict = {}
+            result = run_agent(client, f"Spec:\n{SPEC}", toolbox(last_tests), system=INITIALIZER_SYSTEM, max_turns=10)
+            report(result, last_tests)
+            commit("session 0: initializer")
+            print(f"  wrote {len(features())} features · commit {git('log', '-1', '--oneline')}")
+            log.append({"session": 0, "tokens": tokens(result), "peak": peak_window(result),
+                        "remaining": sum(not f["passes"] for f in features())})
+        worked = 0
+        while worked < max_sessions:
+            remaining = [f for f in features() if not f["passes"]]
+            if not remaining:
+                break
+            if stop_after is not None and worked >= stop_after:
+                print(f"\nStopped after {worked} worker sessions (--stop-after {stop_after}). "
+                      "Run again to resume from the files and git log.")
+                break
+            session = next_session_number()
+            target = remaining[0]["id"]
+            print(f"\nsession {session} · target {target} · fresh window")
+            last_tests = {}
+            result = run_agent(client, "Continue the long-running task.", toolbox(last_tests),
+                               system=WORKER_SYSTEM, max_turns=25)
+            report(result, last_tests)
+            commit(f"session {session}: {target}")
+            left = sum(not f["passes"] for f in features())
+            print(f"  {left} features left · commit {git('log', '-1', '--oneline')}")
+            log.append({"session": session, "target": target, "turns": result.turns, "tokens": tokens(result),
+                        "peak": peak_window(result), "remaining": left})
+            worked += 1
+    except KeyboardInterrupt:
+        print(f"\n\nInterrupted during session {session}. Nothing was committed for it.")
+        changes = git("status", "--short")
+        print("Uncommitted changes in the workspace:\n" + (changes or "  (none)"))
+        print("Run again to resume from the last checkpoint.")
+    if log:
+        print(f"\nThis run: {len(log)} sessions · {sum(e['tokens'] for e in log):,} tokens · "
+              f"largest single window {max(e['peak'] for e in log):,}")
     return log
 
 
+def show() -> None:
+    for name in ("features.json", "progress.md"):
+        path = WORKSPACE / name
+        print(f"===== {name} =====")
+        print(path.read_text() if path.exists() else "(missing)")
+    print("===== git log =====")
+    print(git("log", "--oneline"))
+    print("===== git status =====")
+    print(git("status", "--short") or "(clean)")
+
+
 if __name__ == "__main__":
-    run(reset="--reset" in sys.argv)
+    if "--show" in sys.argv:
+        show()
+        sys.exit(0)
+    stop = int(sys.argv[sys.argv.index("--stop-after") + 1]) if "--stop-after" in sys.argv else None
+    run(reset="--reset" in sys.argv, stop_after=stop)
     print("\n" + git("log", "--oneline"))
-    print(json.dumps(features(), indent=2))
+    print("\n".join(f"{f['id']}  {'pass' if f['passes'] else 'todo'}  {f['description'][:70]}" for f in features()))
