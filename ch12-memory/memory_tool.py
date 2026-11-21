@@ -5,14 +5,18 @@ gets one `memory` tool with file commands (view, create, str_replace, insert,
 delete, rename) scoped to a /memories folder. The same command set as the
 Claude API's memory tool, implemented client-side so you can see every step.
 
-Run:  python ch12-memory/memory_tool.py session1   # agent learns a decision and saves it
+Run:  python ch12-memory/memory_tool.py reset      # empty the memory folder
+      python ch12-memory/memory_tool.py session1   # agent learns a decision and saves it
       python ch12-memory/memory_tool.py session2   # fresh conversation recalls it
-      python ch12-memory/memory_tool.py show        # print the memory folder
+      python ch12-memory/memory_tool.py session2 --no-memory   # same question, empty memory
+      python ch12-memory/memory_tool.py show        # print the memory folder and its files
 """
 
 from __future__ import annotations
 
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 from course import SAMPLE_REPO, Tool, get_client, repo_tools, run_agent
@@ -121,9 +125,39 @@ def run_session(task: str, client=None, store: MemoryStore | None = None):
     return run_agent(client or get_client(), task, toolbox, system=SYSTEM)
 
 
+def trace(result) -> list[str]:
+    """One line per tool call: the turn and the call, with memory paths and short arguments."""
+    lines, turn = [], 0
+    for m in result.messages:
+        if m["role"] != "assistant" or isinstance(m["content"], str):
+            continue
+        turn += 1
+        for b in m["content"]:
+            if getattr(b, "type", None) == "tool_use":
+                args = ", ".join(f"{k}={str(v)[:60]!r}" for k, v in (b.input or {}).items())
+                lines.append(f"[turn {turn}] {b.name}({args})")
+    return lines
+
+
+def show(store: MemoryStore) -> str:
+    out = [store.view()]
+    for p in sorted(store.root.rglob("*")):
+        if p.is_file():
+            out.append(f"\n--- /memories/{p.relative_to(store.root).as_posix()} ---\n{p.read_text().rstrip()}")
+    return "\n".join(out)
+
+
 if __name__ == "__main__":
     which = sys.argv[1] if len(sys.argv) > 1 else "session1"
     if which == "show":
-        print(MemoryStore().view())
+        print(show(MemoryStore()))
+    elif which == "reset":
+        shutil.rmtree(MEMORY_DIR, ignore_errors=True)
+        print("Memory folder emptied.")
     else:
-        print(run_session(SESSIONS[which]).text)
+        empty = "--no-memory" in sys.argv
+        store = MemoryStore(Path(tempfile.mkdtemp())) if empty else MemoryStore()
+        result = run_session(SESSIONS[which], store=store)
+        print("Trace:", *trace(result), sep="\n  ")
+        print(f"\n{result.turns} turns · {result.input_tokens:,} input tokens" + ("  (empty memory)" if empty else ""))
+        print("\n" + result.text)
