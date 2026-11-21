@@ -7,6 +7,8 @@ Everything from the course in ~300 lines, with no imports from the course packag
 
 Run:  python ch19-mini-harness/mini_harness.py "Fix the failing test and run the tests"
       python ch19-mini-harness/mini_harness.py --auto --repo /path/to/repo "Explain this codebase"
+      python ch19-mini-harness/mini_harness.py --reset-state ...   # forget memory, progress and traces first
+      python ch19-mini-harness/mini_harness.py --quiet ...         # only the answer and the summary
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -34,6 +37,7 @@ class Config:
     budget_tokens: int = 60_000          # compaction triggers at 70% of this estimate
     keep_tool_results: int = 2          # tool-result TURNS kept intact; the newest is never cleared
     auto_approve: bool = False
+    verbose: bool = True                 # print one line per turn, tool call and context event
     skills_dir: Path = HERE.parent / "ch08-skills" / "skills"
     state_dir: Path = HERE / ".harness"  # memory/, progress.md, traces/
 
@@ -146,8 +150,15 @@ class Harness:
         self.approve = approve or (lambda name, args: cfg.auto_approve or
                                    input(f"Allow {name}({json.dumps(args)[:120]})? [y/N] ").lower() == "y")
         self.input_tokens = 0
+        self.stats = {"turns": 0, "output_tokens": 0, "cache_read": 0, "cache_write": 0, "tools": {},
+                      "cleared": 0, "compactions": 0, "subagents": 0, "sub_input_tokens": 0,
+                      "asked": 0, "denied": 0, "blocked": 0}
         (cfg.state_dir / "traces").mkdir(parents=True, exist_ok=True)
         self.trace_path = cfg.state_dir / "traces" / f"{int(time.time() * 1000)}{'-sub' if sub_agent else ''}.jsonl"
+
+    def log(self, text: str):
+        if self.cfg.verbose:
+            print(("    [sub-agent] " if self.sub_agent else "") + text, flush=True)
 
     def trace(self, event: dict):
         with self.trace_path.open("a") as f:
@@ -172,13 +183,23 @@ class Harness:
         if name in Tools.READ_ONLY or name in {"memory_write", "delegate"}:
             return None
         if name == "write_file" and re.search(r"(sk-ant-|AKIA[0-9A-Z]{16}|PRIVATE KEY)", args.get("content", "")):
+            self.stats["blocked"] += 1
             return "Blocked: content looks like it contains a secret."
-        return None if self.approve(name, args) else "Denied by the user."
+        self.stats["asked"] += 1
+        if self.approve(name, args):
+            return None
+        self.stats["denied"] += 1
+        return "Denied by the user."
 
     def manage_context(self, messages: list) -> list:
         turns = [i for i, m in enumerate(messages) if isinstance(m["content"], list)
                  and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in m["content"])]
         for i in turns[:-max(self.cfg.keep_tool_results, 1)]:
+            fresh = sum(1 for b in messages[i]["content"] if isinstance(b, dict) and b.get("type") == "tool_result"
+                        and b.get("content") != CLEARED)
+            if fresh:
+                self.stats["cleared"] += fresh
+                self.log(f"context: cleared {fresh} old tool result(s)")
             messages[i]["content"] = [dict(b, content=CLEARED) if isinstance(b, dict) and b.get("type") == "tool_result"
                                       else b for b in messages[i]["content"]]
         size = len(json.dumps(messages, default=lambda o: o.model_dump() if hasattr(o, "model_dump") else str(o))) // 4
@@ -194,6 +215,8 @@ class Harness:
                                        f"\n\n{history[-120_000:]}"}])
         text = "".join(b.text for b in summary.content if b.type == "text")
         self.trace({"event": "compaction", "tokens_before": size})
+        self.stats["compactions"] += 1
+        self.log(f"context: compacted ~{size:,} tokens of history into a summary")
         return [{"role": "user", "content": f"<summary>\n{text}\n</summary>\nContinue the task."}] + messages[cut:]
 
     def run(self, task: str) -> str:
@@ -203,10 +226,21 @@ class Harness:
             started = time.perf_counter()
             response = self.client.messages.create(model=self.cfg.model, max_tokens=4096, system=self.system_prompt(),
                                                    tools=self.tools.specs(), messages=messages)
-            self.input_tokens += response.usage.input_tokens
+            u = response.usage
+            self.input_tokens += u.input_tokens
+            self.stats["turns"] = turn
+            self.stats["output_tokens"] += u.output_tokens
+            cache_read = getattr(u, "cache_read_input_tokens", 0) or 0
+            cache_write = getattr(u, "cache_creation_input_tokens", 0) or 0
+            self.stats["cache_read"] += cache_read
+            self.stats["cache_write"] += cache_write
+            names = [b.name for b in response.content if b.type == "tool_use"]
+            self.log(f"turn {turn}: {u.input_tokens:,} in (+{cache_read:,} cache read, +{cache_write:,} cache write) "
+                     f"· {u.output_tokens:,} out · {', '.join(names) or 'final answer'}")
             messages.append({"role": "assistant", "content": response.content})
             self.trace({"event": "turn", "turn": turn, "stop": response.stop_reason,
-                        "input_tokens": response.usage.input_tokens, "seconds": round(time.perf_counter() - started, 2),
+                        "input_tokens": u.input_tokens, "output_tokens": u.output_tokens,
+                        "cache_read": cache_read, "cache_write": cache_write, "seconds": round(time.perf_counter() - started, 2),
                         "tools": [b.name for b in response.content if b.type == "tool_use"]})
             if response.stop_reason != "tool_use":
                 answer = "".join(b.text for b in response.content if b.type == "text")
@@ -216,6 +250,9 @@ class Harness:
             for b in (b for b in response.content if b.type == "tool_use"):
                 blocked = self.permit(b.name, b.input)
                 out = blocked or self.tools.call(b.name, b.input)
+                self.stats["tools"][b.name] = self.stats["tools"].get(b.name, 0) + 1
+                args = ", ".join(f"{k}={str(v)[:40]!r}" for k, v in (b.input or {}).items() if k != "content")
+                self.log(f"  {b.name}({args}) -> {'BLOCKED: ' + blocked if blocked else f'{len(out):,} chars'}")
                 self.trace({"event": "tool", "tool": b.name, "chars": len(out), "blocked": bool(blocked)})
                 results.append({"type": "tool_result", "tool_use_id": b.id, "is_error": bool(blocked),
                                 "content": out if blocked else f"<tool_output>\n{out}\n</tool_output>"})
@@ -231,14 +268,31 @@ class Harness:
             f.write(line)
 
 
+def summary(h: Harness) -> str:
+    st = h.stats
+    tools = ", ".join(f"{n} ×{c}" for n, c in sorted(st["tools"].items(), key=lambda x: -x[1])) or "none"
+    return "\n".join([
+        f"turns {st['turns']} · {h.input_tokens:,} input (+{st['cache_read']:,} cache read, "
+        f"+{st['cache_write']:,} cache write) · {st['output_tokens']:,} output",
+        f"tools: {tools}",
+        f"context: {st['cleared']} tool results cleared · {st['compactions']} compactions · "
+        f"{st['subagents']} sub-agents ({st['sub_input_tokens']:,} input tokens)",
+        f"permissions: {st['asked']} asked · {st['denied']} denied · {st['blocked']} blocked as secrets",
+        f"trace: {h.trace_path}",
+        f"progress log: {h.cfg.state_dir / 'progress.md'}"])
+
+
 def main(argv: list[str]) -> None:
-    cfg = Config(auto_approve="--auto" in argv)
+    cfg = Config(auto_approve="--auto" in argv, verbose="--quiet" not in argv)
     if "--repo" in argv:
         cfg.repo = Path(argv[argv.index("--repo") + 1]).resolve()
+    if "--reset-state" in argv and cfg.state_dir.exists():
+        shutil.rmtree(cfg.state_dir)
     words = [a for i, a in enumerate(argv) if not a.startswith("--") and (i == 0 or argv[i - 1] != "--repo")]
     harness = Harness(cfg)
-    print(harness.run(" ".join(words) or "Explain this repository."))
-    print(f"\n[{harness.input_tokens:,} input tokens · trace: {harness.trace_path}]")
+    answer = harness.run(" ".join(words) or "Explain this repository.")
+    print("\n=== answer ===\n" + answer)
+    print("\n=== summary ===\n" + summary(harness))
 
 
 if __name__ == "__main__":

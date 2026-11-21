@@ -25,6 +25,11 @@ python ch19-mini-harness/mini_harness.py --auto --repo /path/to/your/repo "Expla
 git checkout sample-repo    # undo the agent's fix
 ```
 
+While it runs, the harness prints one line per turn (tokens, cache reads and writes, tools) and per tool call, plus
+any clearing, compaction or sub-agent. It ends with a summary: turns, tokens, tools used, context events and
+permissions asked. `--quiet` prints only the answer and the summary; `--reset-state` forgets memory, progress and
+traces before the run.
+
 State (memory, progress log, traces) lives in `ch19-mini-harness/.harness/` (git-ignored).
 
 Compare the design with [mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent), which makes the opposite choice: bash as the only tool.
