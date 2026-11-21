@@ -56,14 +56,17 @@ def compare(client=None) -> dict:
         # read-only tools: we only want to see whether the plan follows the project's conventions
         result = run_agent(client, TASK + " Describe the change; do not write files.", repo_tools(SAMPLE_REPO),
                            system=system, max_turns=10)
-        out[label] = result.text
+        out[label] = {"text": result.text, "turns": result.turns, "input_tokens": result.input_tokens,
+                      "system_chars": len(system)}
     return out
 
 
 if __name__ == "__main__":
     if "--compare" in sys.argv:
-        for label, answer in compare().items():
-            print(f"\n=== {label} ===\n{answer}")
+        for label, r in compare().items():
+            print(f"\n=== {label} ===")
+            print(f"system prompt ~{r['system_chars'] // 4} tokens · {r['turns']} turns · {r['input_tokens']:,} input tokens\n")
+            print(r["text"])
     else:
         prompt, sources = build_system_prompt(SAMPLE_REPO)
         print("Layers loaded:", *sources, sep="\n  - ")
