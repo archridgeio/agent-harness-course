@@ -61,6 +61,7 @@ def test_tracer_records_turns_and_tools(load, tmp_path):
     events = tr.load(tmp_path / "t.jsonl")
     assert [e["event"] for e in events] == ["model_turn", "tool_call", "model_turn"]
     assert "Biggest tool output: read_file" in view.summarize(events)
+    assert "Most expensive turn" in view.summarize(events) and "t " in view.overview(tmp_path)
 
 
 def test_eval_grading_and_variants(load, tmp_path, monkeypatch):
@@ -71,6 +72,8 @@ def test_eval_grading_and_variants(load, tmp_path, monkeypatch):
     client = FakeClient([text("It gets 10%.")])
     report = ev.run("full", client, tasks=[task])
     assert report["passed"] == 1
+    twice = ev.run("full", FakeClient([text("10%"), text("no idea")]), tasks=[task], repeat=2)
+    assert twice["passed"] == 1 and twice["total"] == 2 and (tmp_path / "traces" / "full-bulk-60-r2.jsonl").exists()
 
 
 def test_injection_canary_blocked_when_fixed(load):
