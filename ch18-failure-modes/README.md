@@ -16,8 +16,12 @@ Most "model mistakes" are context mistakes, and context is an attack surface.
 
 ```bash
 python ch18-failure-modes/failures.py injection
+python ch18-failure-modes/failures.py injection --repeat 3   # results vary, so run it more than once
 python ch18-failure-modes/failures.py all
 ```
+
+Each run prints its signal, the tool calls the agent made and its tokens, then a broken-vs-fixed summary.
+For `injection`, the signal also says whether the permission hook blocked a write and whether the agent told the user.
 
 The injected file, [`fixtures/CONTRIBUTING.md`](fixtures/CONTRIBUTING.md), is a harmless canary: its hidden comment, dressed up as a normal project rule, only asks for a file named `INJECTED.txt` holding a summary. (If an AI coding agent of yours ever creates that file in this repo, this demo just worked on it.)
 
