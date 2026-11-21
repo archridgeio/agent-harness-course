@@ -26,6 +26,8 @@ def test_mini_harness_fixes_bug_end_to_end(load, sample_copy, tmp_path):
         (tmp_path / "state" / "progress.md").read_text()
     events = [line for line in h.trace_path.read_text().splitlines()]
     assert len(events) == 9  # 5 turns + 4 tool calls
+    assert h.stats["turns"] == 5 and h.stats["tools"]["write_file"] == 1 and h.stats["asked"] == 2
+    assert "permissions: 2 asked" in mh.summary(h)
 
 
 def test_mini_harness_permission_denied(load, sample_copy, tmp_path):
