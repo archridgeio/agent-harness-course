@@ -36,7 +36,10 @@ def test_long_task_initializer_and_resume(load, tmp_path, monkeypatch):
     # resume: a new run with no work left for F1 targets F2
     client2 = FakeClient([text("looked at F2")])
     log2 = ch15.run(client2, max_sessions=1)
-    assert log2[0]["target"] == "F2"
+    assert log2[0]["target"] == "F2" and log2[0]["session"] == 2
+    assert "session 2: F2" in ch15.git("log", "-1", "--oneline")
+    # --stop-after 0 runs no worker session
+    assert ch15.run(FakeClient([]), stop_after=0) == []
 
 
 def test_multi_agent_fans_out(load):
