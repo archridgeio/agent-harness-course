@@ -137,10 +137,20 @@ already read: use your notes."""
 DEMO_TASK = ('Review the repo one module at a time. For each module in inventory/: read the module, then read the tests that cover it, then write a 3-line review before moving to the next module. Finish with a summary table.')
 
 
-def trace_turn(turn, response, messages):
-    calls = [f"{b.name}({', '.join(f'{v}' for v in (b.input or {}).values())})"
-             for b in response.content if b.type == "tool_use"]
-    print(f"  turn {turn:>2}: {', '.join(calls) or 'final answer'}", flush=True)
+def make_trace(compactor=None):
+    """after_turn hook: print each turn's tool calls, the context size sent, and any compaction."""
+    seen = [0]
+
+    def trace_turn(turn, response, messages):
+        if compactor and len(compactor.history) > seen[0]:
+            before, after = compactor.history[-1]
+            print(f"  -- compacted: ~{before:,} -> ~{after:,} tokens --", flush=True)
+            seen[0] = len(compactor.history)
+        calls = [f"{b.name}({', '.join(f'{v}' for v in (b.input or {}).values())})"
+                 for b in response.content if b.type == "tool_use"]
+        sent = response.usage.input_tokens
+        print(f"  turn {turn:>2} [{sent:>6,} in]: {', '.join(calls) or 'final answer'}", flush=True)
+    return trace_turn
 
 
 if __name__ == "__main__":
@@ -156,7 +166,7 @@ if __name__ == "__main__":
     task = args[0] if args else DEMO_TASK
     client = get_client()
     compactor = None if off else Compactor(client, budget=budget)
-    hooks = Hooks(before_model=compactor, after_turn=trace_turn) if compactor else Hooks(after_turn=trace_turn)
+    hooks = Hooks(before_model=compactor, after_turn=make_trace(compactor))
     system = "" if no_notes else NOTE_TAKING_SYSTEM
     result = run_agent(client, task, repo_tools(SAMPLE_REPO), system=system, hooks=hooks, max_turns=30)
     print("\n" + result.text)
